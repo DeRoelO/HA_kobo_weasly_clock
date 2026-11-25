@@ -499,7 +499,7 @@ def get_state_signature(demo_mode: bool = False) -> str:
         parts.append("demo")
     else:
         for p in PERSONS:
-            st = ha_get_state(p["entity"]) or {}
+            st = fetch_ha_state(p["entity"]) or {}
             parts.append(f"{p['entity']}:{st.get('state', '')}:{st.get('last_changed', '')}")
     return hashlib.md5("|".join(parts).encode("utf-8")).hexdigest()[:12]
 
