@@ -1,0 +1,13 @@
+services:
+  kobo-klok:
+    build: ./kobo_klok
+    container_name: kobo-klok
+    restart: unless-stopped
+    ports:
+      - "8099:8099"
+    environment:
+      - TZ=Europe/Amsterdam
+      - HA_URL=${HA_URL}
+      - HA_TOKEN=${HA_TOKEN}
+      - REFRESH_SECONDS=300
+      - EINK_BOOST=1

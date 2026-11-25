@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Moderne Familieklok — Preview</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #1a1816;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      padding: 24px;
+      font-family: system-ui, -apple-system, sans-serif;
+      color: #f3eee5;
+    }
+    .wrap { width: 100%; max-width: 560px; }
+    .controls {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: center;
+      font-size: 14px;
+    }
+    select {
+      padding: 6px 10px;
+      border-radius: 8px;
+      background: #2b2824;
+      color: #f3eee5;
+      border: 1px solid #4d453a;
+    }
+  </style>
+</head>
+<body>
+  <div class="controls">
+    <label>Alex:
+      <select id="selAlex">
+        <option value="home">Thuis</option>
+        <option value="Werk">Werk</option>
+        <option value="School">School</option>
+        <option value="Familie">Familie</option>
+        <option value="Onderweg">Onderweg</option>
+        <option value="not_home">Elders</option>
+      </select>
+    </label>
+    <label>Sam:
+      <select id="selSam">
+        <option value="home">Thuis</option>
+        <option value="Werk">Werk</option>
+        <option value="School" selected>School</option>
+        <option value="Familie">Familie</option>
+        <option value="Onderweg">Onderweg</option>
+        <option value="not_home">Elders</option>
+      </select>
+    </label>
+  </div>
+  <div class="wrap">
+    <modern-family-clock-card id="clock"></modern-family-clock-card>
+  </div>
+  <script type="module" src="./modern-family-clock-card.js"></script>
+  <script type="module">
+    customElements.whenDefined("modern-family-clock-card").then(() => {
+      const card = document.getElementById("clock");
+      card.setConfig({
+        persons: [
+          { entity: "person.alex", person_entity: "person.alex", name: "Alex", hand: "iron", color: "#1c1c1c" },
+          { entity: "person.sam", person_entity: "person.sam", name: "Sam", hand: "brass", color: "#b8924a" },
+        ],
+      });
+      const now = new Date().toISOString();
+      const update = () => {
+        card.hass = {
+          states: {
+            "person.alex": { state: document.getElementById("selAlex").value, last_changed: now, attributes: {} },
+            "person.sam": { state: document.getElementById("selSam").value, last_changed: now, attributes: {} },
+          },
+        };
+      };
+      document.getElementById("selAlex").addEventListener("change", update);
+      document.getElementById("selSam").addEventListener("change", update);
+      update();
+    });
+  </script>
+</body>
+</html>

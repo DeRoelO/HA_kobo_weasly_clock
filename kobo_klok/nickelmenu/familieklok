@@ -1,0 +1,6 @@
+# Plaats dit bestand (zonder extensie) in .adds/nm/familieklok op je Kobo e-reader.
+# Vervang homeassistant.local eventueel door het vaste IP-adres van je Home Assistant server.
+
+menu_item :main :Familieklok :nickel_browser :modal:http://homeassistant.local:8099/
+menu_item :main :WiFi aan (klok) :nickel_setting :toggle :force_wifi
+  chain_success :nickel_wifi :autoconnect

@@ -1,0 +1,64 @@
+name: "Kobo Familieklok"
+version: "1.0.0"
+slug: "kobo_klok"
+description: "Moderne vierkante familieklok (Weasley-style) gerenderd als 1072x1448 kleuren-PNG voor Kobo Clara Colour & e-ink schermen via NickelMenu."
+url: "https://github.com/DeRoelO/HA_kobo_weasly_clock"
+arch:
+  - aarch64
+  - amd64
+  - armv7
+startup: services
+boot: auto
+init: false
+homeassistant_api: true
+ports:
+  8099/tcp: 8099
+ports_description:
+  8099/tcp: "Webpagina & PNG voor Kobo NickelMenu / e-ink"
+options:
+  refresh_seconds: 300
+  eink_boost: true
+  screen_width: 1072
+  screen_height: 1448
+  persons:
+    - name: "Alex"
+      entity: "person.alex"
+      person_entity: "person.alex"
+      hand: "iron"
+    - name: "Sam"
+      entity: "person.sam"
+      person_entity: "person.sam"
+      hand: "brass"
+  sections:
+    - name: "Thuis"
+      key: "thuis"
+      states: "home,Thuis"
+    - name: "Werk"
+      key: "werk"
+      states: "Werk,Work"
+    - name: "School"
+      key: "school"
+      states: "School"
+    - name: "Familie"
+      key: "familie"
+      states: "Familie,Family"
+    - name: "Onderweg"
+      key: "onderweg"
+      states: "Onderweg,Travelling"
+    - name: "Elders"
+      key: "elders"
+      states: "not_home,away,Elders"
+schema:
+  refresh_seconds: int(30,3600)
+  eink_boost: bool
+  screen_width: int(400,2400)
+  screen_height: int(400,3200)
+  persons:
+    - name: str
+      entity: str
+      person_entity: str?
+      hand: list(iron|brass)
+  sections:
+    - name: str
+      key: list(thuis|werk|school|familie|onderweg|elders|parkeren)
+      states: str
