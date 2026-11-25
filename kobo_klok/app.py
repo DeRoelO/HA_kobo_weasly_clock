@@ -50,27 +50,27 @@ INACTIVE_STATES = {"", "idle", "off", "standby", "unknown", "unavailable", "none
 SERVICE_META = {
     "disney": (
         "Disney+",
-        "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/Disney%2B_logo.svg/640px-Disney%2B_logo.svg.png",
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/Disney%2B_logo.svg/330px-Disney%2B_logo.svg.png",
     ),
     "f1tv": (
         "F1 TV",
-        "https://upload.wikimedia.org/wikipedia/commons/thumb/3/33/F1.svg/640px-F1.svg.png",
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/3/33/F1.svg/330px-F1.svg.png",
     ),
     "hbo_max": (
         "HBO Max",
-        "https://upload.wikimedia.org/wikipedia/commons/thumb/5/59/HBO_Max_2025.svg/640px-HBO_Max_2025.svg.png",
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/5/59/HBO_Max_2025.svg/960px-HBO_Max_2025.svg.png",
     ),
     "jellyfin": (
         "Jellyfin",
-        "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Jellyfin_logo.svg/640px-Jellyfin_logo.svg.png",
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Jellyfin_logo.svg/330px-Jellyfin_logo.svg.png",
     ),
     "netflix": (
         "Netflix",
-        "https://upload.wikimedia.org/wikipedia/commons/thumb/0/08/Netflix_2015_logo.svg/640px-Netflix_2015_logo.svg.png",
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/0/08/Netflix_2015_logo.svg/330px-Netflix_2015_logo.svg.png",
     ),
     "prime": (
         "Prime Video",
-        "https://upload.wikimedia.org/wikipedia/commons/thumb/1/11/Amazon_Prime_Video_logo.svg/640px-Amazon_Prime_Video_logo.svg.png",
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/1/11/Amazon_Prime_Video_logo.svg/330px-Amazon_Prime_Video_logo.svg.png",
     ),
     "videoland": (
         "Videoland",
@@ -78,15 +78,15 @@ SERVICE_META = {
     ),
     "youtube": (
         "YouTube",
-        "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b8/YouTube_Logo_2017.svg/640px-YouTube_Logo_2017.svg.png",
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b8/YouTube_Logo_2017.svg/330px-YouTube_Logo_2017.svg.png",
     ),
     "ziggo": (
         "Ziggo GO",
-        "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2d/Ziggo.svg/640px-Ziggo.svg.png",
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2d/Ziggo.svg/330px-Ziggo.svg.png",
     ),
     "npo_start": (
         "NPO Start",
-        "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/NPO_Start_logo.svg/640px-NPO_Start_logo.svg.png",
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/NPO_Start_logo.svg/330px-NPO_Start_logo.svg.png",
     ),
 }
 
@@ -541,7 +541,9 @@ def fetch_remote_image(url: str, use_ha_auth: bool = False, ttl: int = 3600) -> 
     cached = _media_img_cache.get(full_url)
     if cached and (now - cached[0]) < ttl:
         return cached[1]
-    headers = ha_headers() if use_ha_auth else {"User-Agent": "KoboFamilieklok/1.2"}
+    headers = ha_headers() if use_ha_auth else {
+        "User-Agent": "KoboFamilieklok/1.2 (https://github.com/DeRoelO/HA_kobo_weasly_clock; home-assistant-addon)"
+    }
     try:
         r = requests.get(full_url, headers=headers, timeout=8)
         if r.ok:

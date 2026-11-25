@@ -1,5 +1,5 @@
 name: "Kobo Familieklok"
-version: "1.2.0"
+version: "1.2.1"
 slug: "kobo_klok"
 description: "Moderne vierkante familieklok (Weasley-style) met automatische Nu op TV & Gaming weergave als 1072x1448 kleuren-PNG voor Kobo Clara Colour & e-ink schermen."
 url: "https://github.com/DeRoelO/HA_kobo_weasly_clock"
