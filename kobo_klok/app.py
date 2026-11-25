@@ -415,12 +415,13 @@ def render_clock_png(demo_mode: bool = False) -> bytes:
         shown = person_states[:2]
         card_gap = 28
         card_w = (PAGE_W - 2 * margin_x - card_gap * max(0, len(shown) - 1)) // max(1, len(shown))
-        card_h = 188
-        card_y = panel_top + 42
+        card_h = 204
+        card_y = panel_top + 34
 
-        name_font = load_font(34, bold=True)
-        loc_font = load_font(30, bold=True)
-        time_font = load_font(22, bold=False)
+        name_font = load_font(33, bold=True)
+        loc_font = load_font(29, bold=True)
+        sub_font = load_font(21, bold=False)
+        time_font = load_font(20, bold=False)
 
         for idx, ps in enumerate(shown):
             x0 = margin_x + idx * (card_w + card_gap)
@@ -437,25 +438,30 @@ def render_clock_png(demo_mode: bool = False) -> bytes:
             )
 
             av = make_circle_avatar(ps["avatar"], 92, ps["color"], ring_width=4, initial=ps["name"][:1].upper())
-            canvas.alpha_composite(av, (x0 + 22, y0 + (card_h - av.height) // 2))
+            canvas.alpha_composite(av, (x0 + 20, y0 + (card_h - av.height) // 2))
             draw = ImageDraw.Draw(canvas)
 
-            tx = x0 + 22 + av.width + 18
-            draw.rounded_rectangle((tx, y0 + 44, tx + 28, y0 + 52), radius=4, fill=ps["color"] + (255,))
-            draw.text((tx + 38, y0 + 28), ps["name"], font=name_font, fill=(28, 26, 23, 255))
-
+            tx = x0 + 20 + av.width + 16
             sec_name = SECTIONS[ps["sec_idx"]]["name"]
             raw = ps["raw_state"]
-            loc_text = sec_name
+            sub_loc = ""
             if raw and raw.lower() != sec_name.lower() and raw not in ("home", "not_home") and "Virtueel" not in raw:
-                loc_text = f"{sec_name} · {raw}"
-            if len(loc_text) > 19:
-                loc_text = loc_text[:18] + "…"
-            draw.text((tx, y0 + 78), loc_text, font=loc_font, fill=(154, 116, 46, 255))
-
+                sub_loc = raw if len(raw) <= 24 else raw[:23] + "…"
             since = format_since(ps["last_changed"])
-            if since:
-                draw.text((tx, y0 + 124), since, font=time_font, fill=(112, 104, 92, 255))
+
+            if sub_loc:
+                draw.rounded_rectangle((tx, y0 + 32, tx + 26, y0 + 40), radius=4, fill=ps["color"] + (255,))
+                draw.text((tx + 36, y0 + 18), ps["name"], font=name_font, fill=(28, 26, 23, 255))
+                draw.text((tx, y0 + 64), sec_name, font=loc_font, fill=(154, 116, 46, 255))
+                draw.text((tx, y0 + 104), sub_loc, font=sub_font, fill=(68, 62, 54, 255))
+                if since:
+                    draw.text((tx, y0 + 142), since, font=time_font, fill=(122, 114, 102, 255))
+            else:
+                draw.rounded_rectangle((tx, y0 + 46, tx + 26, y0 + 54), radius=4, fill=ps["color"] + (255,))
+                draw.text((tx + 36, y0 + 32), ps["name"], font=name_font, fill=(28, 26, 23, 255))
+                draw.text((tx, y0 + 82), sec_name, font=loc_font, fill=(154, 116, 46, 255))
+                if since:
+                    draw.text((tx, y0 + 128), since, font=time_font, fill=(122, 114, 102, 255))
 
         now = datetime.now()
         footer = f"{DAYS_NL[now.weekday()]} {now.day} {MONTHS_NL[now.month - 1]}  ·  bijgewerkt {now.strftime('%H:%M')}"
