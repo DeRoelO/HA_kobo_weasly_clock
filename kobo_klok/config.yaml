@@ -1,7 +1,7 @@
 name: "Kobo Familieklok"
-version: "1.1.1"
+version: "1.2.0"
 slug: "kobo_klok"
-description: "Moderne vierkante familieklok (Weasley-style) gerenderd als 1072x1448 kleuren-PNG voor Kobo Clara Colour & e-ink schermen via NickelMenu."
+description: "Moderne vierkante familieklok (Weasley-style) met automatische Nu op TV & Gaming weergave als 1072x1448 kleuren-PNG voor Kobo Clara Colour & e-ink schermen."
 url: "https://github.com/DeRoelO/HA_kobo_weasly_clock"
 arch:
   - aarch64
@@ -20,6 +20,11 @@ options:
   eink_boost: true
   screen_width: 1072
   screen_height: 1448
+  media_enabled: false
+  media_poster_entity: ""
+  media_gaming_sensor: ""
+  media_gaming_image: ""
+  media_service_sensor: ""
   persons:
     - name: "Alex"
       entity: "person.alex"
@@ -53,6 +58,11 @@ schema:
   eink_boost: bool
   screen_width: int(400,2400)
   screen_height: int(400,3200)
+  media_enabled: bool?
+  media_poster_entity: str?
+  media_gaming_sensor: str?
+  media_gaming_image: str?
+  media_service_sensor: str?
   persons:
     - name: str
       entity: str

@@ -39,6 +39,57 @@ PAGE_W = int(_ha_opts.get("screen_width", os.environ.get("SCREEN_WIDTH", "1072")
 PAGE_H = int(_ha_opts.get("screen_height", os.environ.get("SCREEN_HEIGHT", "1448")))
 CLOCK_SIZE = min(PAGE_W, PAGE_H)
 
+MEDIA_ENABLED = bool(_ha_opts.get("media_enabled", os.environ.get("MEDIA_ENABLED", "0") == "1"))
+MEDIA_POSTER_ENTITY = str(_ha_opts.get("media_poster_entity", os.environ.get("MEDIA_POSTER_ENTITY", "")) or "").strip()
+MEDIA_GAMING_SENSOR = str(_ha_opts.get("media_gaming_sensor", os.environ.get("MEDIA_GAMING_SENSOR", "")) or "").strip()
+MEDIA_GAMING_IMAGE = str(_ha_opts.get("media_gaming_image", os.environ.get("MEDIA_GAMING_IMAGE", "")) or "").strip()
+MEDIA_SERVICE_SENSOR = str(_ha_opts.get("media_service_sensor", os.environ.get("MEDIA_SERVICE_SENSOR", "")) or "").strip()
+
+INACTIVE_STATES = {"", "idle", "off", "standby", "unknown", "unavailable", "none"}
+
+SERVICE_META = {
+    "disney": (
+        "Disney+",
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/Disney%2B_logo.svg/640px-Disney%2B_logo.svg.png",
+    ),
+    "f1tv": (
+        "F1 TV",
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/3/33/F1.svg/640px-F1.svg.png",
+    ),
+    "hbo_max": (
+        "HBO Max",
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/5/59/HBO_Max_2025.svg/640px-HBO_Max_2025.svg.png",
+    ),
+    "jellyfin": (
+        "Jellyfin",
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Jellyfin_logo.svg/640px-Jellyfin_logo.svg.png",
+    ),
+    "netflix": (
+        "Netflix",
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/0/08/Netflix_2015_logo.svg/640px-Netflix_2015_logo.svg.png",
+    ),
+    "prime": (
+        "Prime Video",
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/1/11/Amazon_Prime_Video_logo.svg/640px-Amazon_Prime_Video_logo.svg.png",
+    ),
+    "videoland": (
+        "Videoland",
+        "https://upload.wikimedia.org/wikipedia/commons/7/72/VIDEOLAND_BY_RTL.png",
+    ),
+    "youtube": (
+        "YouTube",
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b8/YouTube_Logo_2017.svg/640px-YouTube_Logo_2017.svg.png",
+    ),
+    "ziggo": (
+        "Ziggo GO",
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2d/Ziggo.svg/640px-Ziggo.svg.png",
+    ),
+    "npo_start": (
+        "NPO Start",
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/NPO_Start_logo.svg/640px-NPO_Start_logo.svg.png",
+    ),
+}
+
 HAND_PIVOTS = {"iron": 0.7438, "brass": 0.7627}
 HAND_COLORS = {"iron": (28, 26, 23), "brass": (184, 146, 74)}
 
@@ -101,7 +152,8 @@ MONTHS_NL = [
 ]
 
 _avatar_cache: Dict[str, Tuple[float, Image.Image]] = {}
-_render_cache: Tuple[float, bytes] = (0.0, b"")
+_media_img_cache: Dict[str, Tuple[float, Image.Image]] = {}
+_render_cache: Tuple[float, str, bytes] = (0.0, "", b"")
 
 
 def load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
@@ -481,26 +533,305 @@ def render_clock_png(demo_mode: bool = False) -> bytes:
     return buf.getvalue()
 
 
-def get_cached_png(demo_mode: bool = False) -> bytes:
+def fetch_remote_image(url: str, use_ha_auth: bool = False, ttl: int = 3600) -> Optional[Image.Image]:
+    if not url:
+        return None
+    full_url = url if url.startswith("http") else f"{HA_URL}{url}"
+    now = time.time()
+    cached = _media_img_cache.get(full_url)
+    if cached and (now - cached[0]) < ttl:
+        return cached[1]
+    headers = ha_headers() if use_ha_auth else {"User-Agent": "KoboFamilieklok/1.2"}
+    try:
+        r = requests.get(full_url, headers=headers, timeout=8)
+        if r.ok:
+            im = Image.open(io.BytesIO(r.content)).convert("RGBA")
+            _media_img_cache[full_url] = (now, im)
+            return im
+    except Exception as exc:
+        print(f"[Media] Failed to fetch image {full_url}: {exc}", file=sys.stderr)
+    return None
+
+
+def detect_active_media(demo_media: str = "") -> Optional[dict]:
+    """Return active TV/Gaming descriptor or None when idle."""
+    if demo_media:
+        key = demo_media.lower()
+        if key == "ps5":
+            return {
+                "kind": "gaming",
+                "badge": "NU AAN HET GAMEN",
+                "platform": "PlayStation 5",
+                "title": "Demo Game",
+                "image_url": "",
+                "use_ha_auth": False,
+                "sig": "demo:ps5",
+            }
+        label, logo_url = SERVICE_META.get(key, (demo_media.title(), ""))
+        return {
+            "kind": "service",
+            "badge": "NU OP TV",
+            "platform": label,
+            "title": label,
+            "image_url": logo_url,
+            "use_ha_auth": False,
+            "sig": f"demo:{key}",
+        }
+
+    if not MEDIA_ENABLED or not HA_URL or not HA_TOKEN:
+        return None
+
+    # 1. Active Jellyfin / movie poster
+    if MEDIA_POSTER_ENTITY:
+        st = fetch_ha_state(MEDIA_POSTER_ENTITY) or {}
+        val = str(st.get("state", "")).strip()
+        if val.lower() not in INACTIVE_STATES:
+            attrs = st.get("attributes") or {}
+            pic = attrs.get("entity_picture") or ""
+            return {
+                "kind": "poster",
+                "badge": "NU OP TV",
+                "platform": "Jellyfin",
+                "title": str(attrs.get("media_title") or attrs.get("title") or ""),
+                "image_url": pic,
+                "use_ha_auth": True,
+                "sig": f"poster:{val}:{pic}",
+            }
+
+    # 2. Active Gaming (e.g. PlayStation 5)
+    if MEDIA_GAMING_SENSOR:
+        st = fetch_ha_state(MEDIA_GAMING_SENSOR) or {}
+        val = str(st.get("state", "")).strip()
+        if val.lower() not in INACTIVE_STATES:
+            pic = ""
+            img_state = ""
+            if MEDIA_GAMING_IMAGE:
+                ist = fetch_ha_state(MEDIA_GAMING_IMAGE) or {}
+                img_state = str(ist.get("state", ""))
+                pic = (ist.get("attributes") or {}).get("entity_picture") or ""
+            return {
+                "kind": "gaming",
+                "badge": "NU AAN HET GAMEN",
+                "platform": "PlayStation 5",
+                "title": val,
+                "image_url": pic,
+                "use_ha_auth": True,
+                "sig": f"gaming:{val}:{img_state}",
+            }
+
+    # 3. Active Streaming Service
+    if MEDIA_SERVICE_SENSOR:
+        st = fetch_ha_state(MEDIA_SERVICE_SENSOR) or {}
+        val = str(st.get("state", "")).strip()
+        if val.lower() not in INACTIVE_STATES:
+            key = val.lower()
+            label, logo_url = SERVICE_META.get(key, (val.replace("_", " ").title(), ""))
+            return {
+                "kind": "service",
+                "badge": "NU OP TV",
+                "platform": label,
+                "title": label,
+                "image_url": logo_url,
+                "use_ha_auth": False,
+                "sig": f"service:{key}",
+            }
+
+    return None
+
+
+def _round_corners(im: Image.Image, radius: int) -> Image.Image:
+    im = im.convert("RGBA")
+    mask = Image.new("L", im.size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, im.width - 1, im.height - 1), radius=radius, fill=255)
+    out = Image.new("RGBA", im.size, (0, 0, 0, 0))
+    out.paste(im, (0, 0), mask)
+    return out
+
+
+def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, max_w: int, max_lines: int = 2) -> List[str]:
+    words = text.split()
+    if not words:
+        return []
+    lines: List[str] = []
+    cur = words[0]
+    for w in words[1:]:
+        test = f"{cur} {w}"
+        if draw.textbbox((0, 0), test, font=font)[2] <= max_w:
+            cur = test
+        else:
+            lines.append(cur)
+            cur = w
+            if len(lines) == max_lines - 1:
+                break
+    lines.append(cur)
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+    # Ellipsize last line if too wide
+    while draw.textbbox((0, 0), lines[-1], font=font)[2] > max_w and len(lines[-1]) > 4:
+        lines[-1] = lines[-1][:-2].rstrip() + "…"
+    return lines
+
+
+def render_media_png(media: dict) -> bytes:
+    """Render a crisp 1072x1448 e-ink 'Nu op TV & Gaming' display."""
+    kind = media["kind"]
+    badge = media["badge"]
+    platform = media["platform"]
+    title = media["title"]
+
+    # Warm charcoal cinema backdrop (high contrast, clean on Kaleido 3)
+    canvas = Image.new("RGBA", (PAGE_W, PAGE_H), (24, 24, 28, 255))
+
+    artwork = fetch_remote_image(
+        media.get("image_url", ""),
+        use_ha_auth=media.get("use_ha_auth", False),
+        ttl=120 if media.get("use_ha_auth") else 86400,
+    )
+
+    # Subtle dark blurred ambient backdrop for posters/covers
+    if artwork is not None and kind in ("poster", "gaming"):
+        bg = artwork.convert("RGB")
+        scale = max(PAGE_W / bg.width, PAGE_H / bg.height)
+        bg = bg.resize((int(bg.width * scale), int(bg.height * scale)), Image.Resampling.LANCZOS)
+        left = (bg.width - PAGE_W) // 2
+        top = (bg.height - PAGE_H) // 2
+        bg = bg.crop((left, top, left + PAGE_W, top + PAGE_H))
+        bg = bg.filter(ImageFilter.GaussianBlur(34))
+        bg = ImageEnhance.Brightness(bg).enhance(0.28)
+        canvas.paste(bg.convert("RGBA"), (0, 0))
+
+    draw = ImageDraw.Draw(canvas)
+
+    # Top pill badge ("NU OP TV" / "NU AAN HET GAMEN")
+    badge_font = load_font(28, bold=True)
+    bb = draw.textbbox((0, 0), badge, font=badge_font)
+    bw, bh = bb[2] - bb[0], bb[3] - bb[1]
+    pill_w = bw + 64
+    pill_h = bh + 28
+    px0 = (PAGE_W - pill_w) // 2
+    py0 = 56
+    pill_fill = (184, 146, 74, 255) if kind == "gaming" else (235, 228, 214, 255)
+    pill_text = (20, 18, 16, 255)
+    draw.rounded_rectangle((px0, py0, px0 + pill_w, py0 + pill_h), radius=pill_h // 2, fill=pill_fill)
+    draw.text((px0 + 32 - bb[0], py0 + 14 - bb[1]), badge, font=badge_font, fill=pill_text)
+
+    # Main artwork area
+    area_top = py0 + pill_h + 44
+    area_bottom = PAGE_H - 220
+    area_h = area_bottom - area_top
+    area_w = PAGE_W - 120
+
+    if kind == "service":
+        # Warm off-white gallery card so both dark & bright logos pop cleanly on e-ink
+        card_w = PAGE_W - 120
+        card_h = 560
+        cx0 = (PAGE_W - card_w) // 2
+        cy0 = area_top + (area_h - card_h) // 2
+        draw.rounded_rectangle(
+            (cx0, cy0, cx0 + card_w, cy0 + card_h),
+            radius=40,
+            fill=(248, 244, 236, 255),
+            outline=(184, 146, 74, 255),
+            width=4,
+        )
+        if artwork is not None:
+            max_lw = int(card_w * 0.72)
+            max_lh = int(card_h * 0.62)
+            scale = min(max_lw / artwork.width, max_lh / artwork.height)
+            lw = max(1, int(artwork.width * scale))
+            lh = max(1, int(artwork.height * scale))
+            logo_rs = artwork.resize((lw, lh), Image.Resampling.LANCZOS)
+            canvas.alpha_composite(logo_rs, (cx0 + (card_w - lw) // 2, cy0 + (card_h - lh) // 2))
+        else:
+            big_font = load_font(86, bold=True)
+            tb = draw.textbbox((0, 0), platform, font=big_font)
+            tw, th = tb[2] - tb[0], tb[3] - tb[1]
+            draw.text((cx0 + (card_w - tw) // 2 - tb[0], cy0 + (card_h - th) // 2 - tb[1]), platform, font=big_font, fill=(28, 26, 23, 255))
+        draw = ImageDraw.Draw(canvas)
+    elif artwork is not None:
+        scale = min(area_w / artwork.width, area_h / artwork.height)
+        aw = max(1, int(artwork.width * scale))
+        ah = max(1, int(artwork.height * scale))
+        art_rs = _round_corners(artwork.resize((aw, ah), Image.Resampling.LANCZOS), radius=32)
+        ax0 = (PAGE_W - aw) // 2
+        ay0 = area_top + (area_h - ah) // 2
+        # Soft drop shadow
+        sh = Image.new("RGBA", (aw + 36, ah + 36), (0, 0, 0, 0))
+        ImageDraw.Draw(sh).rounded_rectangle((18, 18, aw + 18, ah + 18), radius=32, fill=(0, 0, 0, 170))
+        sh = sh.filter(ImageFilter.GaussianBlur(14))
+        canvas.alpha_composite(sh, (ax0 - 18, ay0 - 12))
+        canvas.alpha_composite(art_rs, (ax0, ay0))
+        draw = ImageDraw.Draw(canvas)
+        draw.rounded_rectangle((ax0, ay0, ax0 + aw, ay0 + ah), radius=32, outline=(255, 255, 255, 65), width=3)
+    else:
+        # Fallback card if cover couldn't be fetched
+        card_w = PAGE_W - 140
+        card_h = 460
+        cx0 = (PAGE_W - card_w) // 2
+        cy0 = area_top + (area_h - card_h) // 2
+        draw.rounded_rectangle((cx0, cy0, cx0 + card_w, cy0 + card_h), radius=36, fill=(40, 40, 48, 255), outline=(184, 146, 74, 255), width=3)
+        big_font = load_font(64, bold=True)
+        tb = draw.textbbox((0, 0), platform, font=big_font)
+        tw, th = tb[2] - tb[0], tb[3] - tb[1]
+        draw.text((cx0 + (card_w - tw) // 2 - tb[0], cy0 + (card_h - th) // 2 - tb[1]), platform, font=big_font, fill=(242, 236, 224, 255))
+
+    # Bottom title + platform / date footer
+    display_title = title if (title and title.lower() != platform.lower()) else platform
+    title_font = load_font(42, bold=True)
+    lines = _wrap_text(draw, display_title, title_font, PAGE_W - 120, max_lines=2)
+    ty = area_bottom + 24
+    for line in lines:
+        lb = draw.textbbox((0, 0), line, font=title_font)
+        lw = lb[2] - lb[0]
+        draw.text(((PAGE_W - lw) / 2 - lb[0], ty), line, font=title_font, fill=(245, 240, 230, 255))
+        ty += 52
+
+    now = datetime.now()
+    sub = f"{platform}  ·  {DAYS_NL[now.weekday()]} {now.day} {MONTHS_NL[now.month - 1]}"
+    sub_font = load_font(24, bold=False)
+    sb = draw.textbbox((0, 0), sub, font=sub_font)
+    sw = sb[2] - sb[0]
+    draw.text(((PAGE_W - sw) / 2 - sb[0], PAGE_H - 72), sub, font=sub_font, fill=(175, 168, 155, 255))
+
+    out_rgb = canvas.convert("RGB")
+    if EINK_BOOST:
+        out_rgb = ImageEnhance.Color(out_rgb).enhance(1.20)
+        out_rgb = ImageEnhance.Contrast(out_rgb).enhance(1.06)
+
+    buf = io.BytesIO()
+    out_rgb.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
+
+
+def get_cached_png(demo_mode: bool = False, force_clock: bool = False, demo_media: str = "") -> bytes:
     global _render_cache
     now = time.time()
-    if not demo_mode and _render_cache[1] and (now - _render_cache[0]) < CACHE_SECONDS:
-        return _render_cache[1]
-    png = render_clock_png(demo_mode=demo_mode)
-    if not demo_mode:
-        _render_cache = (now, png)
+    media = None if force_clock else detect_active_media(demo_media=demo_media)
+    cache_key = f"media:{media['sig']}" if media else ("demo_clock" if demo_mode else "clock")
+
+    if not demo_mode and not demo_media and _render_cache[2] and _render_cache[1] == cache_key and (now - _render_cache[0]) < CACHE_SECONDS:
+        return _render_cache[2]
+
+    png = render_media_png(media) if media is not None else render_clock_png(demo_mode=demo_mode)
+    if not demo_mode and not demo_media:
+        _render_cache = (now, cache_key, png)
     return png
 
 
 def get_state_signature(demo_mode: bool = False) -> str:
-    """Short deterministic hash of all tracked person states + current date."""
+    """Short deterministic hash of all tracked person states + active TV/Gaming + current date."""
     parts = [datetime.now().strftime("%Y-%m-%d")]
     if demo_mode or not HA_URL or not HA_TOKEN:
         parts.append("demo")
     else:
-        for p in PERSONS:
-            st = fetch_ha_state(p["entity"]) or {}
-            parts.append(f"{p['entity']}:{st.get('state', '')}:{st.get('last_changed', '')}")
+        media = detect_active_media()
+        if media is not None:
+            parts.append(f"MEDIA:{media['sig']}")
+        else:
+            parts.append("MEDIA:idle")
+            for p in PERSONS:
+                st = fetch_ha_state(p["entity"]) or {}
+                parts.append(f"{p['entity']}:{st.get('state', '')}:{st.get('last_changed', '')}")
     return hashlib.md5("|".join(parts).encode("utf-8")).hexdigest()[:12]
 
 
@@ -548,7 +879,7 @@ class KoboKlokHandler(BaseHTTPRequestHandler):
 
             changed = sig != since
             if changed:
-                _render_cache = (0.0, b"")
+                _render_cache = (0.0, "", b"")
             status_word = "CHANGED" if changed else "UNCHANGED"
             body = f"{status_word} {sig}\n".encode("utf-8")
             self.send_response(200)
@@ -560,7 +891,9 @@ class KoboKlokHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/klok.png":
-            png = get_cached_png(demo_mode=demo)
+            force_clock = qs.get("mode", [""])[0].lower() == "clock"
+            demo_media = qs.get("demo_media", [""])[0].strip()
+            png = get_cached_png(demo_mode=demo, force_clock=force_clock, demo_media=demo_media)
             self.send_response(200)
             self.send_header("Content-Type", "image/png")
             self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
