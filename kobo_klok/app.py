@@ -1,3 +1,4 @@
+import hashlib
 import io
 import json
 import math
@@ -491,11 +492,24 @@ def get_cached_png(demo_mode: bool = False) -> bytes:
     return png
 
 
+def get_state_signature(demo_mode: bool = False) -> str:
+    """Short deterministic hash of all tracked person states + current date."""
+    parts = [datetime.now().strftime("%Y-%m-%d")]
+    if demo_mode or not HA_URL or not HA_TOKEN:
+        parts.append("demo")
+    else:
+        for p in PERSONS:
+            st = ha_get_state(p["entity"]) or {}
+            parts.append(f"{p['entity']}:{st.get('state', '')}:{st.get('last_changed', '')}")
+    return hashlib.md5("|".join(parts).encode("utf-8")).hexdigest()[:12]
+
+
 class KoboKlokHandler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         print(f"[{datetime.now().strftime('%H:%M:%S')}] {self.address_string()} - {fmt % args}")
 
     def do_GET(self):
+        global _render_cache
         parsed = urlparse(self.path)
         qs = parse_qs(parsed.query)
         demo = qs.get("demo", ["0"])[0] == "1"
@@ -505,6 +519,44 @@ class KoboKlokHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(b'{"status":"ok"}')
+            return
+
+        if parsed.path == "/state":
+            sig = get_state_signature(demo_mode=demo)
+            body = f"{sig}\n".encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if parsed.path == "/wait":
+            since = qs.get("since", [""])[0].strip()
+            try:
+                timeout = int(qs.get("timeout", ["55"])[0])
+            except ValueError:
+                timeout = 55
+            timeout = max(5, min(120, timeout))
+
+            deadline = time.time() + timeout
+            sig = get_state_signature(demo_mode=demo)
+            while sig == since and time.time() < deadline:
+                time.sleep(3)
+                sig = get_state_signature(demo_mode=demo)
+
+            changed = sig != since
+            if changed:
+                _render_cache = (0.0, b"")
+            status_word = "CHANGED" if changed else "UNCHANGED"
+            body = f"{status_word} {sig}\n".encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
             return
 
         if parsed.path == "/klok.png":
